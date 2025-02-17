@@ -1,4 +1,4 @@
-module github.com/chodges15/http2curl
+module github.com/chodges15/http2curl/v3
 
 go 1.20
 
