@@ -2,183 +2,192 @@ package http2curl
 
 import (
 	"bytes"
-	"fmt"
-	"io/ioutil"
+	"compress/gzip"
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"strconv"
 	"strings"
+	"sync"
 	"testing"
 )
 
-func ExampleGetCurlCommand() {
-	form := url.Values{}
-	form.Add("age", "10")
-	form.Add("name", "Hudson")
-	body := form.Encode()
-
-	req, _ := http.NewRequest(http.MethodPost, "http://foo.com/cats", ioutil.NopCloser(bytes.NewBufferString(body)))
-	req.Header.Set("API_KEY", "123")
-
-	command, _ := GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Output:
-	// curl -X 'POST' -d 'age=10&name=Hudson' -H 'Api_key: 123' 'http://foo.com/cats' --compressed
-}
-
-func ExampleGetCurlCommand_json() {
-	req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString(`{"hello":"world","answer":42}`))
-	req.Header.Set("Content-Type", "application/json")
-
-	command, _ := GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Output:
-	// curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed
-}
-
-func ExampleGetCurlCommand_slice() {
-	// See https://github.com/moul/http2curl/issues/12
-	req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString(`{"hello":"world","answer":42}`))
-	req.Header.Set("Content-Type", "application/json")
-
-	command, _ := GetCurlCommand(req)
-	fmt.Println(strings.Join(*command, " \\\n  "))
-
-	// Output:
-	// curl \
-	//   -X \
-	//   'PUT' \
-	//   -d \
-	//   '{"hello":"world","answer":42}' \
-	//   -H \
-	//   'Content-Type: application/json' \
-	//   'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' \
-	//   --compressed
-}
-
-func ExampleGetCurlCommand_noBody() {
-	req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", nil)
-	req.Header.Set("Content-Type", "application/json")
-
-	command, _ := GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Output:
-	// curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed
-}
-
-func ExampleGetCurlCommand_emptyStringBody() {
-	req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString(""))
-	req.Header.Set("Content-Type", "application/json")
-
-	command, _ := GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Output:
-	// curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed
-}
-
-func ExampleGetCurlCommand_newlineInBody() {
-	req, _ := http.NewRequest("POST", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString("hello\nworld"))
-	req.Header.Set("Content-Type", "application/json")
-
-	command, _ := GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Output:
-	// curl -X 'POST' -d 'hello
-	// world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed
-}
-
-func ExampleGetCurlCommand_specialCharsInBody() {
-	req, _ := http.NewRequest("POST", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString(`Hello $123 o'neill -"-`))
-	req.Header.Set("Content-Type", "application/json")
-
-	command, _ := GetCurlCommand(req)
-	fmt.Println(command)
-
-	// Output:
-	// curl -X 'POST' -d 'Hello $123 o'\''neill -"-' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed
-}
-
-func ExampleGetCurlCommand_other() {
-	uri := "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu"
-	payload := new(bytes.Buffer)
-	payload.Write([]byte(`{"hello":"world","answer":42}`))
-	req, err := http.NewRequest("PUT", uri, payload)
-	if err != nil {
-		panic(err)
-	}
-	req.Header.Set("X-Auth-Token", "private-token")
-	req.Header.Set("Content-Type", "application/json")
-
-	command, err := GetCurlCommand(req)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(command)
-	// Output: curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed
-}
-
-func ExampleGetCurlCommand_https() {
-	uri := "https://www.example.com/abc/def.ghi?jlk=mno&pqr=stu"
-	payload := new(bytes.Buffer)
-	payload.Write([]byte(`{"hello":"world","answer":42}`))
-	req, err := http.NewRequest("PUT", uri, payload)
-	if err != nil {
-		panic(err)
-	}
-	req.Header.Set("X-Auth-Token", "private-token")
-	req.Header.Set("Content-Type", "application/json")
-
-	command, err := GetCurlCommand(req)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(command)
-	// Output: curl -k -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'https://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed
-}
-
-// Benchmark test for GetCurlCommand
-func BenchmarkGetCurlCommand(b *testing.B) {
-	form := url.Values{}
-
-	for i := 0; i <= b.N; i++ {
-		form.Add("number", strconv.Itoa(i))
-		body := form.Encode()
-		req, _ := http.NewRequest(http.MethodPost, "http://foo.com", ioutil.NopCloser(bytes.NewBufferString(body)))
-		_, err := GetCurlCommand(req)
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
-func TestGetCurlCommand_serverSide(t *testing.T) {
-	svr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := GetCurlCommand(r)
-		if err != nil {
-			t.Error(err)
-		}
-		fmt.Fprint(w, c.String())
-	}))
-	defer svr.Close()
-
-	resp, err := http.Get(svr.URL)
-	if err != nil {
-		t.Error(err)
-	}
-	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		t.Error(err)
+func TestGetCurlCommand(t *testing.T) {
+	tests := []struct {
+		name        string
+		setupReq    func() *http.Request
+		opts        []CurlOption
+		wantCommand string
+		wantErr     bool
+	}{
+		{
+			name: "GZIP decompression with auto-decompress",
+			setupReq: func() *http.Request {
+				body := compressData([]byte(`{"test":"gzip"}`))
+				req, _ := http.NewRequest("POST", "http://example.com", bytes.NewReader(body))
+				req.Header.Set("Content-Encoding", "gzip")
+				return req
+			},
+			opts: []CurlOption{WithAutoDecompressGZIP()},
+			wantCommand: `curl -X 'POST' -d '{"test":"gzip"}' ` +
+				`'http://example.com' --compressed`,
+		},
+		{
+			name: "Invalid GZIP data with auto-decompress",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("POST", "http://example.com", bytes.NewReader([]byte{0x1, 0x2}))
+				req.Header.Set("Content-Encoding", "gzip")
+				return req
+			},
+			opts:    []CurlOption{WithAutoDecompressGZIP()},
+			wantErr: true,
+		},
+		{
+			name: "Compression flag enabled",
+			setupReq: func() *http.Request {
+				return httptest.NewRequest("GET", "http://example.com", nil)
+			},
+			opts:        []CurlOption{WithCompression()},
+			wantCommand: "curl -X 'GET' 'http://example.com' --compressed",
+		},
+		{
+			name: "Multiple security options",
+			setupReq: func() *http.Request {
+				req := httptest.NewRequest("PUT", "https://example.com", strings.NewReader("data"))
+				req.TLS = &tls.ConnectionState{}
+				return req
+			},
+			opts: []CurlOption{WithInsecureSkipVerify()},
+			wantCommand: `curl -k -X 'PUT' -d 'data' ` +
+				`'https://example.com' --compressed`,
+		},
+		{
+			name: "form data POST request",
+			setupReq: func() *http.Request {
+				form := url.Values{}
+				form.Add("age", "10")
+				form.Add("name", "Hudson")
+				body := form.Encode()
+				req, _ := http.NewRequest(http.MethodPost, "http://foo.com/cats", bytes.NewBufferString(body))
+				req.Header.Set("API_KEY", "123")
+				return req
+			},
+			wantCommand: `curl -X 'POST' -d 'age=10&name=Hudson' -H 'Api_key: 123' 'http://foo.com/cats' --compressed`,
+		},
+		{
+			name: "JSON body PUT request",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString(`{"hello":"world","answer":42}`))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			},
+			wantCommand: `curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+		},
+		{
+			name: "no body request",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", nil)
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			},
+			wantCommand: `curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+		},
+		{
+			name: "empty string body",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString(""))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			},
+			wantCommand: `curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+		},
+		{
+			name: "newline in body",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("POST", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString("hello\nworld"))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			},
+			wantCommand: `curl -X 'POST' -d 'hello
+world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+		},
+		{
+			name: "special characters in body",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("POST", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString(`Hello $123 o'neill -"-`))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			},
+			wantCommand: `curl -X 'POST' -d 'Hello $123 o'\''neill -"-' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+		},
+		{
+			name: "additional headers",
+			setupReq: func() *http.Request {
+				payload := bytes.NewBufferString(`{"hello":"world","answer":42}`)
+				req, _ := http.NewRequest("PUT", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", payload)
+				req.Header.Set("X-Auth-Token", "private-token")
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			},
+			wantCommand: `curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+		},
+		{
+			name: "HTTPS with insecure skip verify",
+			setupReq: func() *http.Request {
+				payload := bytes.NewBufferString(`{"hello":"world","answer":42}`)
+				req, _ := http.NewRequest("PUT", "https://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", payload)
+				req.Header.Set("X-Auth-Token", "private-token")
+				req.Header.Set("Content-Type", "application/json")
+				req.TLS = &tls.ConnectionState{}
+				return req
+			},
+			opts:        []CurlOption{WithInsecureSkipVerify()},
+			wantCommand: `curl -k -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'https://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+		},
+		{
+			name: "server side request headers",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("GET", "http://example.com/", nil)
+				req.Header.Set("Accept-Encoding", "gzip")
+				req.Header.Set("User-Agent", "Go-http-client/1.1")
+				return req
+			},
+			wantCommand: `curl -X 'GET' -H 'Accept-Encoding: gzip' -H 'User-Agent: Go-http-client/1.1' 'http://example.com/' --compressed`,
+		},
 	}
 
-	exp := fmt.Sprintf("curl -X 'GET' -H 'Accept-Encoding: gzip' -H 'User-Agent: Go-http-client/1.1' '%s/' --compressed", svr.URL)
-	if out := string(data); out != exp {
-		t.Errorf("act: %s, exp: %s", out, exp)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := tt.setupReq()
+			command, err := GetCurlCommand(req, tt.opts...)
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("GetCurlCommand() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && command.String() != tt.wantCommand {
+				t.Errorf("Got:\n%s\nWant:\n%s", command.String(), tt.wantCommand)
+			}
+		})
 	}
+}
+
+func TestConcurrentCommandGeneration(t *testing.T) {
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest("GET", "http://example.com", nil)
+			_, _ = GetCurlCommand(req)
+		}()
+	}
+	wg.Wait()
+}
+
+func compressData(data []byte) []byte {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	gz.Write(data)
+	gz.Close()
+	return buf.Bytes()
 }

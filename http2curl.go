@@ -2,84 +2,149 @@ package http2curl
 
 import (
 	"bytes"
+	"compress/gzip"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"sort"
 	"strings"
 )
 
-// CurlCommand contains exec.Command compatible slice + helpers
-type CurlCommand []string
+// CurlCommand holds configuration options for curl command generation
+type CurlCommand struct {
+	Command            []string
+	InsecureSkipVerify bool // -k
+	EnableCompression  bool // --compressed
+	AutoDecompressGZIP bool // Automatically decompress GZIP request
+}
 
 // append appends a string to the CurlCommand
 func (c *CurlCommand) append(newSlice ...string) {
-	*c = append(*c, newSlice...)
+	c.Command = append(c.Command, newSlice...)
 }
 
 // String returns a ready to copy/paste command
 func (c *CurlCommand) String() string {
-	return strings.Join(*c, " ")
+	return strings.Join(c.Command, " ")
 }
 
-func bashEscape(str string) string {
-	return `'` + strings.Replace(str, `'`, `'\''`, -1) + `'`
-}
+// CurlOption defines the functional option type
+type CurlOption func(command *CurlCommand)
 
-// GetCurlCommand returns a CurlCommand corresponding to an http.Request
-func GetCurlCommand(req *http.Request) (*CurlCommand, error) {
-	if req.URL == nil {
-		return nil, fmt.Errorf("getCurlCommand: invalid request, req.URL is nil")
+// WithInsecureSkipVerify enables insecure SSL verification
+func WithInsecureSkipVerify() CurlOption {
+	return func(c *CurlCommand) {
+		c.InsecureSkipVerify = true
 	}
+}
 
-	command := CurlCommand{}
+// WithCompression enables --compressed flag
+func WithCompression() CurlOption {
+	return func(c *CurlCommand) {
+		c.EnableCompression = true
+	}
+}
 
+// WithAutoDecompressGZIP enables automatic GZIP decompression
+func WithAutoDecompressGZIP() CurlOption {
+	return func(c *CurlCommand) {
+		c.AutoDecompressGZIP = true
+	}
+}
+
+// GetCurlCommand generates curl command with configurable options
+func GetCurlCommand(req *http.Request, opts ...CurlOption) (*CurlCommand, error) {
+	command := &CurlCommand{
+		EnableCompression: true, // Default enabled
+	}
 	command.append("curl")
 
-	schema := req.URL.Scheme
-	requestURL := req.URL.String()
-	if schema == "" {
-		schema = "http"
-		if req.TLS != nil {
-			schema = "https"
-		}
-		requestURL = schema + "://" + req.Host + req.URL.Path
+	// Apply options
+	for _, opt := range opts {
+		opt(command)
 	}
 
-	if schema == "https" {
+	// Configure SSL verification
+	if command.InsecureSkipVerify && req.URL.Scheme == "https" {
 		command.append("-k")
 	}
 
 	command.append("-X", bashEscape(req.Method))
 
+	// Process request body
 	if req.Body != nil {
 		var buff bytes.Buffer
-		_, err := buff.ReadFrom(req.Body)
-		if err != nil {
-			return nil, fmt.Errorf("getCurlCommand: buffer read from body error: %w", err)
+		if _, err := buff.ReadFrom(req.Body); err != nil {
+			return nil, fmt.Errorf("buffer read error: %w", err)
 		}
-		// reset body for potential re-reads
-		req.Body = ioutil.NopCloser(bytes.NewBuffer(buff.Bytes()))
-		if len(buff.String()) > 0 {
-			bodyEscaped := bashEscape(buff.String())
-			command.append("-d", bodyEscaped)
+		req.Body = io.NopCloser(bytes.NewBuffer(buff.Bytes()))
+
+		// Handle GZIP decompression if enabled
+		if command.AutoDecompressGZIP && req.Header.Get("Content-Encoding") == "gzip" {
+			decompressed, err := decompressGZIP(buff.Bytes())
+			if err != nil {
+				return nil, err
+			}
+			buff.Reset()
+			buff.Write(decompressed)
+			req.Header.Del("Content-Encoding")
+			req.Header.Del("Content-Length")
+		}
+
+		if buff.Len() > 0 {
+			command.append("-d", bashEscape(buff.String()))
 		}
 	}
 
-	var keys []string
-
-	for k := range req.Header {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, k := range keys {
+	// Add headers
+	for _, k := range sortedKeys(req.Header) {
 		command.append("-H", bashEscape(fmt.Sprintf("%s: %s", k, strings.Join(req.Header[k], " "))))
 	}
 
-	command.append(bashEscape(requestURL))
+	command.append(bashEscape(requestURL(req)))
 
-	command.append("--compressed")
+	if command.EnableCompression {
+		command.append("--compressed")
+	}
 
-	return &command, nil
+	return command, nil
+}
+
+// Helper functions
+func bashEscape(str string) string {
+	return `'` + strings.Replace(str, `'`, `'\''`, -1) + `'`
+}
+
+func decompressGZIP(data []byte) ([]byte, error) {
+	gzReader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("gzip decompression failed: %w", err)
+	}
+	defer func(gzReader *gzip.Reader) {
+		err := gzReader.Close()
+		if err != nil {
+
+		}
+	}(gzReader)
+	return io.ReadAll(gzReader)
+}
+
+func sortedKeys(h http.Header) []string {
+	keys := make([]string, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func requestURL(req *http.Request) string {
+	if req.URL.Scheme == "" {
+		scheme := "http"
+		if req.TLS != nil {
+			scheme = "https"
+		}
+		return fmt.Sprintf("%s://%s%s", scheme, req.Host, req.URL.Path)
+	}
+	return req.URL.String()
 }

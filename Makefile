@@ -1,4 +1,4 @@
-GOPKG ?=	moul.io/http2curl
+GOPKG ?=	github.com/chodges15/http2curl
 
 all: test
 
