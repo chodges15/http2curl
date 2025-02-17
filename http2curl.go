@@ -54,9 +54,7 @@ func WithAutoDecompressGZIP() CurlOption {
 
 // GetCurlCommand generates curl command with configurable options
 func GetCurlCommand(req *http.Request, opts ...CurlOption) (*CurlCommand, error) {
-	command := &CurlCommand{
-		EnableCompression: true, // Default enabled
-	}
+	command := &CurlCommand{}
 	command.append("curl")
 
 	// Apply options

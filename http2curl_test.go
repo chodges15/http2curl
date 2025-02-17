@@ -30,7 +30,7 @@ func TestGetCurlCommand(t *testing.T) {
 			},
 			opts: []CurlOption{WithAutoDecompressGZIP()},
 			wantCommand: `curl -X 'POST' -d '{"test":"gzip"}' ` +
-				`'http://example.com' --compressed`,
+				`'http://example.com'`,
 		},
 		{
 			name: "Invalid GZIP data with auto-decompress",
@@ -59,7 +59,7 @@ func TestGetCurlCommand(t *testing.T) {
 			},
 			opts: []CurlOption{WithInsecureSkipVerify()},
 			wantCommand: `curl -k -X 'PUT' -d 'data' ` +
-				`'https://example.com' --compressed`,
+				`'https://example.com'`,
 		},
 		{
 			name: "form data POST request",
@@ -72,7 +72,7 @@ func TestGetCurlCommand(t *testing.T) {
 				req.Header.Set("API_KEY", "123")
 				return req
 			},
-			wantCommand: `curl -X 'POST' -d 'age=10&name=Hudson' -H 'Api_key: 123' 'http://foo.com/cats' --compressed`,
+			wantCommand: `curl -X 'POST' -d 'age=10&name=Hudson' -H 'Api_key: 123' 'http://foo.com/cats'`,
 		},
 		{
 			name: "JSON body PUT request",
@@ -81,7 +81,7 @@ func TestGetCurlCommand(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			},
-			wantCommand: `curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+			wantCommand: `curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "no body request",
@@ -90,7 +90,7 @@ func TestGetCurlCommand(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			},
-			wantCommand: `curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+			wantCommand: `curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "empty string body",
@@ -99,7 +99,7 @@ func TestGetCurlCommand(t *testing.T) {
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			},
-			wantCommand: `curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+			wantCommand: `curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "newline in body",
@@ -109,7 +109,7 @@ func TestGetCurlCommand(t *testing.T) {
 				return req
 			},
 			wantCommand: `curl -X 'POST' -d 'hello
-world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "special characters in body",
@@ -118,7 +118,7 @@ world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?j
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			},
-			wantCommand: `curl -X 'POST' -d 'Hello $123 o'\''neill -"-' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+			wantCommand: `curl -X 'POST' -d 'Hello $123 o'\''neill -"-' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "additional headers",
@@ -129,7 +129,7 @@ world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?j
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			},
-			wantCommand: `curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+			wantCommand: `curl -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "HTTPS with insecure skip verify",
@@ -142,7 +142,7 @@ world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?j
 				return req
 			},
 			opts:        []CurlOption{WithInsecureSkipVerify()},
-			wantCommand: `curl -k -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'https://www.example.com/abc/def.ghi?jlk=mno&pqr=stu' --compressed`,
+			wantCommand: `curl -k -X 'PUT' -d '{"hello":"world","answer":42}' -H 'Content-Type: application/json' -H 'X-Auth-Token: private-token' 'https://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "server side request headers",
@@ -152,7 +152,7 @@ world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?j
 				req.Header.Set("User-Agent", "Go-http-client/1.1")
 				return req
 			},
-			wantCommand: `curl -X 'GET' -H 'Accept-Encoding: gzip' -H 'User-Agent: Go-http-client/1.1' 'http://example.com/' --compressed`,
+			wantCommand: `curl -X 'GET' -H 'Accept-Encoding: gzip' -H 'User-Agent: Go-http-client/1.1' 'http://example.com/'`,
 		},
 	}
 
