@@ -57,6 +57,8 @@ func GetCurlCommand(req *http.Request, opts ...CurlOption) (*CurlCommand, error)
 	command := &CurlCommand{}
 	command.append("curl")
 
+	decompressedBody := false
+
 	// Apply options
 	for _, opt := range opts {
 		opt(command)
@@ -85,8 +87,7 @@ func GetCurlCommand(req *http.Request, opts ...CurlOption) (*CurlCommand, error)
 			}
 			buff.Reset()
 			buff.Write(decompressed)
-			req.Header.Del("Content-Encoding")
-			req.Header.Del("Content-Length")
+			decompressedBody = true
 		}
 
 		if buff.Len() > 0 {
@@ -96,6 +97,9 @@ func GetCurlCommand(req *http.Request, opts ...CurlOption) (*CurlCommand, error)
 
 	// Add headers
 	for _, k := range sortedKeys(req.Header) {
+		if decompressedBody && (k == "Content-Encoding" || k == "Content-Length") {
+			continue
+		}
 		command.append("-H", bashEscape(fmt.Sprintf("%s: %s", k, strings.Join(req.Header[k], " "))))
 	}
 
