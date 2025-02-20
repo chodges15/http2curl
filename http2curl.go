@@ -16,6 +16,7 @@ type CurlCommand struct {
 	InsecureSkipVerify bool // -k
 	EnableCompression  bool // --compressed
 	AutoDecompressGZIP bool // Automatically decompress GZIP request
+	EscapedNewlines    bool // Escape newline characters in the curl command
 }
 
 // append appends a string to the CurlCommand
@@ -49,6 +50,14 @@ func WithCompression() CurlOption {
 func WithAutoDecompressGZIP() CurlOption {
 	return func(c *CurlCommand) {
 		c.AutoDecompressGZIP = true
+	}
+}
+
+// WithEscapedNewlines enables retaining newline characters in your curl command
+// by passing them as '\n' through "echo -e" and having curl read the body from standard input
+func WithEscapedNewlines() CurlOption {
+	return func(c *CurlCommand) {
+		c.EscapedNewlines = true
 	}
 }
 
@@ -91,7 +100,17 @@ func GetCurlCommand(req *http.Request, opts ...CurlOption) (*CurlCommand, error)
 		}
 
 		if buff.Len() > 0 {
-			command.append("-d", bashEscape(buff.String()))
+			escapedBody := bashEscape(buff.String())
+			escapedBody = strings.ReplaceAll(escapedBody, "\n", "\\n")
+			if command.EscapedNewlines {
+				echoCommand := []string{fmt.Sprintf("echo -e %s", escapedBody)}
+				echoCommand = append(echoCommand, "|")
+				command.Command = append(echoCommand, command.Command...)
+				command.append("-d", "@-") // Read from standard input
+			} else {
+				escapedBody = strings.ReplaceAll(escapedBody, "\n", "\\n")
+				command.append("-d", escapedBody)
+			}
 		}
 	}
 

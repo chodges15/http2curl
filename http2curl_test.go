@@ -102,14 +102,23 @@ func TestGetCurlCommand(t *testing.T) {
 			wantCommand: `curl -X 'PUT' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
-			name: "newline in body",
+			name: "newline in body with escaped newlines",
 			setupReq: func() *http.Request {
 				req, _ := http.NewRequest("POST", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString("hello\nworld"))
 				req.Header.Set("Content-Type", "application/json")
 				return req
 			},
-			wantCommand: `curl -X 'POST' -d 'hello
-world' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
+			opts:        []CurlOption{WithEscapedNewlines()},
+			wantCommand: `echo -e 'hello\nworld' | curl -X 'POST' -d @- -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
+		},
+		{
+			name: "newline in body without escaped newlines",
+			setupReq: func() *http.Request {
+				req, _ := http.NewRequest("POST", "http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu", bytes.NewBufferString("hello\nworld"))
+				req.Header.Set("Content-Type", "application/json")
+				return req
+			},
+			wantCommand: `curl -X 'POST' -d 'hello\nworld' -H 'Content-Type: application/json' 'http://www.example.com/abc/def.ghi?jlk=mno&pqr=stu'`,
 		},
 		{
 			name: "special characters in body",
